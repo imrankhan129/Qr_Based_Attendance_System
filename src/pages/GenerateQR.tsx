@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QrCode, Download, Copy, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { QRCodeSVG } from "qrcode.react";
 
 const GenerateQR = () => {
   const [qrData, setQrData] = useState({
@@ -19,6 +20,7 @@ const GenerateQR = () => {
   const [qrCode, setQrCode] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
+  const qrRef = useRef<HTMLDivElement>(null);
 
   const generateQRCode = async () => {
     if (!qrData.sessionName || !qrData.sessionId) {
@@ -32,17 +34,23 @@ const GenerateQR = () => {
 
     setIsGenerating(true);
     
-    // Simulate QR generation
     setTimeout(() => {
-      const qrText = `ATTENDANCE_${qrData.sessionId}_${Date.now()}`;
-      setQrCode(qrText);
+      const qrPayload = JSON.stringify({
+        type: "ATTENDANCE",
+        sessionId: qrData.sessionId,
+        sessionName: qrData.sessionName,
+        duration: qrData.duration,
+        timestamp: Date.now(),
+        expiryTime: qrData.expiryTime
+      });
+      setQrCode(qrPayload);
       setIsGenerating(false);
       toast({
         title: "QR Code Generated",
-        description: "Your QR code is ready for use",
+        description: "Your QR code is ready to scan",
         variant: "default"
       });
-    }, 1500);
+    }, 800);
   };
 
   const copyToClipboard = () => {
@@ -54,11 +62,36 @@ const GenerateQR = () => {
   };
 
   const downloadQR = () => {
-    // In a real app, this would generate and download an actual QR code image
-    toast({
-      title: "Download Started",
-      description: "QR code image is being downloaded",
-    });
+    const svg = qrRef.current?.querySelector('svg');
+    if (!svg) return;
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+
+    canvas.width = 1000;
+    canvas.height = 1000;
+
+    img.onload = () => {
+      ctx?.drawImage(img, 0, 0, 1000, 1000);
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `qr-${qrData.sessionId}-${Date.now()}.png`;
+          link.click();
+          URL.revokeObjectURL(url);
+          toast({
+            title: "Download Complete",
+            description: "QR code saved to your device",
+          });
+        }
+      });
+    };
+
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
 
   return (
@@ -169,22 +202,17 @@ const GenerateQR = () => {
           <CardContent className="space-y-4">
             {qrCode ? (
               <>
-                {/* QR Code Placeholder - In real app, this would be an actual QR code */}
-                <div className="aspect-square bg-gradient-card rounded-lg flex items-center justify-center border-2 border-dashed border-border">
-                  <div className="text-center space-y-4">
-                    <div className="w-48 h-48 bg-white rounded-lg shadow-card flex items-center justify-center mx-auto">
-                      <div className="grid grid-cols-8 gap-1 p-4">
-                        {Array.from({ length: 64 }).map((_, i) => (
-                          <div
-                            key={i}
-                            className={`w-2 h-2 ${
-                              Math.random() > 0.5 ? 'bg-black' : 'bg-white'
-                            }`}
-                          />
-                        ))}
-                      </div>
+                <div className="aspect-square bg-gradient-card rounded-lg flex items-center justify-center border-2 border-dashed border-border p-6">
+                  <div className="text-center space-y-4" ref={qrRef}>
+                    <div className="bg-white p-6 rounded-lg shadow-card inline-block">
+                      <QRCodeSVG 
+                        value={qrCode}
+                        size={256}
+                        level="H"
+                        includeMargin={true}
+                      />
                     </div>
-                    <p className="text-sm text-muted-foreground font-mono">{qrCode}</p>
+                    <p className="text-sm text-muted-foreground">Scan with any QR scanner</p>
                   </div>
                 </div>
 
