@@ -1,11 +1,25 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { QrCode, BarChart3, Scan, Calendar, Users, Menu, X } from "lucide-react";
+import { QrCode, BarChart3, Scan, Calendar, Users, Menu, X, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "Signed out",
+      description: "You have been successfully signed out",
+    });
+    navigate("/");
+  };
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: BarChart3 },
@@ -49,6 +63,18 @@ const Navbar = () => {
                 </Link>
               );
             })}
+            {user ? (
+              <Button onClick={handleSignOut} variant="ghost" size="sm" className="ml-2">
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </Button>
+            ) : (
+              <Link to="/auth" className="ml-2">
+                <Button variant="default" size="sm">
+                  Sign In
+                </Button>
+              </Link>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -86,6 +112,26 @@ const Navbar = () => {
                   </Link>
                 );
               })}
+              {user ? (
+                <Button 
+                  onClick={() => {
+                    handleSignOut();
+                    setIsOpen(false);
+                  }} 
+                  variant="ghost" 
+                  size="sm"
+                  className="w-full justify-start"
+                >
+                  <LogOut className="h-5 w-5 mr-2" />
+                  Sign Out
+                </Button>
+              ) : (
+                <Link to="/auth" onClick={() => setIsOpen(false)}>
+                  <Button variant="default" size="sm" className="w-full">
+                    Sign In
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         )}

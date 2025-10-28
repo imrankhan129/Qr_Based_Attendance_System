@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { QrCode, Download, Copy, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 const GenerateQR = () => {
   const [qrData, setQrData] = useState({
@@ -21,9 +23,10 @@ const GenerateQR = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
   const qrRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
 
   const generateQRCode = async () => {
-    if (!qrData.sessionName || !qrData.sessionId) {
+    if (!qrData.sessionName || !qrData.sessionId || !user) {
       toast({
         title: "Missing Information",
         description: "Please fill in session name and ID",
@@ -34,7 +37,7 @@ const GenerateQR = () => {
 
     setIsGenerating(true);
     
-    setTimeout(() => {
+    try {
       const qrPayload = JSON.stringify({
         type: "ATTENDANCE",
         sessionId: qrData.sessionId,
@@ -43,14 +46,33 @@ const GenerateQR = () => {
         timestamp: Date.now(),
         expiryTime: qrData.expiryTime
       });
+
+      const { error } = await supabase.from("sessions").insert({
+        session_name: qrData.sessionName,
+        session_id: qrData.sessionId,
+        duration: parseInt(qrData.duration),
+        description: qrData.description,
+        expiry_time: qrData.expiryTime || null,
+        qr_data: qrPayload,
+        created_by: user.id,
+      });
+
+      if (error) throw error;
+
       setQrCode(qrPayload);
-      setIsGenerating(false);
       toast({
         title: "QR Code Generated",
-        description: "Your QR code is ready to scan",
-        variant: "default"
+        description: "Session saved and QR code is ready to scan",
       });
-    }, 800);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const copyToClipboard = () => {

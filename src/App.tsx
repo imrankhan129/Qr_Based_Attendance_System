@@ -11,6 +11,8 @@ import ScanQR from "./pages/ScanQR";
 import Sessions from "./pages/Sessions";
 import Students from "./pages/Students";
 import NotFound from "./pages/NotFound";
+import Auth from "./pages/Auth";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -24,11 +26,12 @@ const App = () => (
           <Navbar />
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/generate" element={<GenerateQR />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/generate" element={<ProtectedRoute><GenerateQR /></ProtectedRoute>} />
             <Route path="/scan" element={<ScanQR />} />
-            <Route path="/sessions" element={<Sessions />} />
-            <Route path="/students" element={<Students />} />
+            <Route path="/sessions" element={<ProtectedRoute><Sessions /></ProtectedRoute>} />
+            <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -2,8 +2,10 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { QrCode, Scan, BarChart3, Shield, Clock, Users } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 const Home = () => {
+  const { user } = useAuth();
   const features = [
     {
       icon: QrCode,
@@ -59,7 +61,9 @@ const Home = () => {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button asChild variant="hero" size="lg" className="text-lg px-8">
-              <Link to="/dashboard">Get Started</Link>
+              <Link to={user ? "/dashboard" : "/auth"}>
+                {user ? "Go to Dashboard" : "Get Started"}
+              </Link>
             </Button>
             <Button asChild variant="outline" size="lg" className="text-lg px-8">
               <Link to="/scan">Try Scanner</Link>
@@ -129,7 +133,9 @@ const Home = () => {
             Join thousands of educational institutions already using our platform
           </p>
           <Button asChild variant="outline" size="lg" className="bg-white text-primary hover:bg-white/90 border-white text-lg px-8">
-            <Link to="/dashboard">Start Free Trial</Link>
+            <Link to={user ? "/dashboard" : "/auth"}>
+              {user ? "Go to Dashboard" : "Start Free Trial"}
+            </Link>
           </Button>
         </div>
       </section>
