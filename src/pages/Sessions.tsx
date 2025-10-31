@@ -1,86 +1,95 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Calendar, Clock, Users, Search, Plus, MoreHorizontal } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
 
 const Sessions = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  
-  const sessions = [
-    {
-      id: "CS-101-001",
-      name: "Computer Science Fundamentals",
-      instructor: "Dr. Smith",
-      date: "2024-01-15",
-      startTime: "09:00",
-      endTime: "10:30",
-      duration: "90 minutes",
-      location: "Room A-101",
-      totalStudents: 50,
-      attended: 45,
-      status: "Completed",
-      attendanceRate: "90%"
+
+  // Fetch all sessions with attendance data
+  const { data: sessions = [], isLoading, refetch } = useQuery({
+    queryKey: ['sessions'],
+    queryFn: async () => {
+      const { data: sessionsData } = await supabase
+        .from('sessions')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!sessionsData) return [];
+
+      // Get total students count
+      const { count: totalStudentsCount } = await supabase
+        .from('students')
+        .select('*', { count: 'exact', head: true });
+
+      const sessionsWithAttendance = await Promise.all(
+        sessionsData.map(async (session) => {
+          const { count: attendedCount } = await supabase
+            .from('attendance')
+            .select('*', { count: 'exact', head: true })
+            .eq('session_id', session.id);
+
+          const now = new Date();
+          const expiryTime = session.expiry_time ? new Date(session.expiry_time) : null;
+          
+          let status = 'Upcoming';
+          if (expiryTime) {
+            if (expiryTime < now) {
+              status = 'Completed';
+              // Update is_active to false if expired
+              if (session.is_active) {
+                await supabase
+                  .from('sessions')
+                  .update({ is_active: false })
+                  .eq('id', session.id);
+              }
+            } else if (session.is_active) {
+              status = 'Active';
+            }
+          }
+
+          const attended = attendedCount || 0;
+          const total = totalStudentsCount || 0;
+          const attendanceRate = total > 0 ? ((attended / total) * 100).toFixed(1) : "0.0";
+
+          return {
+            id: session.session_id,
+            name: session.session_name,
+            instructor: 'Teacher',
+            date: session.created_at ? format(new Date(session.created_at), 'yyyy-MM-dd') : 'N/A',
+            startTime: session.created_at ? format(new Date(session.created_at), 'HH:mm') : 'N/A',
+            endTime: expiryTime ? format(expiryTime, 'HH:mm') : 'N/A',
+            duration: `${session.duration} minutes`,
+            location: session.description || 'N/A',
+            totalStudents: total,
+            attended: attended,
+            status: status,
+            attendanceRate: status === 'Upcoming' ? 'N/A' : `${attendanceRate}%`,
+            dbId: session.id
+          };
+        })
+      );
+
+      return sessionsWithAttendance;
     },
-    {
-      id: "MATH-201-002",
-      name: "Advanced Mathematics",
-      instructor: "Prof. Johnson",
-      date: "2024-01-15",
-      startTime: "11:00",
-      endTime: "12:30",
-      duration: "90 minutes",
-      location: "Room B-203",
-      totalStudents: 42,
-      attended: 38,
-      status: "Completed",
-      attendanceRate: "90.5%"
-    },
-    {
-      id: "PHY-151-003",
-      name: "Physics Laboratory",
-      instructor: "Dr. Wilson",
-      date: "2024-01-15",
-      startTime: "14:00",
-      endTime: "17:00",
-      duration: "3 hours",
-      location: "Lab C-301",
-      totalStudents: 35,
-      attended: 32,
-      status: "Active",
-      attendanceRate: "91.4%"
-    },
-    {
-      id: "ENG-101-004",
-      name: "English Literature",
-      instructor: "Ms. Brown",
-      date: "2024-01-15",
-      startTime: "16:00",
-      endTime: "17:30",
-      duration: "90 minutes",
-      location: "Room D-105",
-      totalStudents: 28,
-      attended: 0,
-      status: "Upcoming",
-      attendanceRate: "N/A"
-    },
-    {
-      id: "CHEM-201-005",
-      name: "Organic Chemistry",
-      instructor: "Dr. Davis",
-      date: "2024-01-16",
-      startTime: "10:00",
-      endTime: "11:30",
-      duration: "90 minutes",
-      location: "Lab B-201",
-      totalStudents: 32,
-      attended: 0,
-      status: "Scheduled",
-      attendanceRate: "N/A"
-    }
-  ];
+    refetchInterval: 30000 // Refetch every 30 seconds to update status
+  });
+
+  // Calculate average attendance rate
+  const avgAttendanceRate = sessions.length > 0
+    ? sessions
+        .filter(s => s.status !== 'Upcoming')
+        .reduce((acc, s) => {
+          const rate = parseFloat(s.attendanceRate);
+          return acc + (isNaN(rate) ? 0 : rate);
+        }, 0) / sessions.filter(s => s.status !== 'Upcoming').length
+    : 0;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -183,7 +192,9 @@ const Sessions = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Avg. Attendance</p>
-                <p className="text-2xl font-bold text-foreground">90.6%</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {avgAttendanceRate > 0 ? `${avgAttendanceRate.toFixed(1)}%` : 'N/A'}
+                </p>
               </div>
               <Calendar className="h-8 w-8 text-warning" />
             </div>
@@ -192,8 +203,33 @@ const Sessions = () => {
       </div>
 
       {/* Sessions List */}
-      <div className="space-y-4">
-        {filteredSessions.map((session) => (
+      {isLoading ? (
+        <Card className="bg-card shadow-card border-0">
+          <CardContent className="text-center py-12">
+            <p className="text-muted-foreground">Loading sessions...</p>
+          </CardContent>
+        </Card>
+      ) : filteredSessions.length === 0 ? (
+        <Card className="bg-card shadow-card border-0">
+          <CardContent className="text-center py-12">
+            <Calendar className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">No sessions found</h3>
+            <p className="text-muted-foreground mb-4">
+              {searchTerm ? "Try adjusting your search terms" : "Create your first session to get started"}
+            </p>
+            {!searchTerm && (
+              <Button asChild variant="gradient">
+                <Link to="/generate">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Session
+                </Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {filteredSessions.map((session) => (
           <Card key={session.id} className="bg-card shadow-card border-0 hover:shadow-elegant transition-all duration-300">
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
@@ -263,8 +299,9 @@ const Sessions = () => {
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
