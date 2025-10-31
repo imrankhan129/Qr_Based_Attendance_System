@@ -3,75 +3,169 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Users, Calendar, QrCode, TrendingUp, Clock, CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 const Dashboard = () => {
+  const { user } = useAuth();
+
+  // Fetch total students
+  const { data: studentsCount = 0 } = useQuery({
+    queryKey: ['students-count'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('students')
+        .select('*', { count: 'exact', head: true });
+      return count || 0;
+    }
+  });
+
+  // Fetch total sessions
+  const { data: sessionsCount = 0 } = useQuery({
+    queryKey: ['sessions-count'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('sessions')
+        .select('*', { count: 'exact', head: true });
+      return count || 0;
+    }
+  });
+
+  // Fetch active sessions
+  const { data: activeSessions = 0 } = useQuery({
+    queryKey: ['active-sessions'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('sessions')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
+      return count || 0;
+    }
+  });
+
+  // Fetch attendance rate
+  const { data: attendanceRate = 0 } = useQuery({
+    queryKey: ['attendance-rate'],
+    queryFn: async () => {
+      const { count: totalAttendance } = await supabase
+        .from('attendance')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: totalSessions } = await supabase
+        .from('sessions')
+        .select('*', { count: 'exact', head: true });
+
+      if (!totalSessions || totalSessions === 0) return 0;
+      return ((totalAttendance || 0) / (totalSessions * studentsCount)) * 100;
+    }
+  });
+
+  // Fetch recent sessions with attendance
+  const { data: recentSessions = [] } = useQuery({
+    queryKey: ['recent-sessions'],
+    queryFn: async () => {
+      const { data: sessions } = await supabase
+        .from('sessions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(4);
+
+      if (!sessions) return [];
+
+      const sessionsWithAttendance = await Promise.all(
+        sessions.map(async (session) => {
+          const { count } = await supabase
+            .from('attendance')
+            .select('*', { count: 'exact', head: true })
+            .eq('session_id', session.id);
+
+          const now = new Date();
+          const expiryTime = session.expiry_time ? new Date(session.expiry_time) : null;
+          
+          let status = 'Upcoming';
+          if (session.is_active && expiryTime && expiryTime > now) {
+            status = 'Active';
+          } else if (expiryTime && expiryTime < now) {
+            status = 'Completed';
+          }
+
+          return {
+            id: session.session_id,
+            name: session.session_name,
+            time: session.created_at ? new Date(session.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '',
+            date: 'Today',
+            status,
+            attended: count || 0,
+            total: studentsCount
+          };
+        })
+      );
+
+      return sessionsWithAttendance;
+    }
+  });
+
+  // Fetch recent activity
+  const { data: recentActivity = [] } = useQuery({
+    queryKey: ['recent-activity'],
+    queryFn: async () => {
+      const { data: attendance } = await supabase
+        .from('attendance')
+        .select(`
+          *,
+          student:students(full_name),
+          session:sessions(session_id)
+        `)
+        .order('scanned_at', { ascending: false })
+        .limit(4);
+
+      if (!attendance) return [];
+
+      return attendance.map((record: any) => {
+        const scannedAt = record.scanned_at ? new Date(record.scanned_at) : new Date();
+        const now = new Date();
+        const diffMinutes = Math.floor((now.getTime() - scannedAt.getTime()) / 60000);
+        
+        return {
+          student: record.student?.full_name || 'Unknown',
+          action: 'Checked in',
+          class: record.session?.session_id || 'N/A',
+          time: diffMinutes < 60 ? `${diffMinutes} minutes ago` : `${Math.floor(diffMinutes / 60)} hours ago`,
+          status: 'success'
+        };
+      });
+    }
+  });
+
   const stats = [
     {
       title: "Total Students",
-      value: "1,248",
+      value: studentsCount.toString(),
       change: "+12%",
       icon: Users,
       color: "text-blue-600"
     },
     {
       title: "Active Sessions",
-      value: "24",
-      change: "+3",
+      value: activeSessions.toString(),
+      change: `+${activeSessions}`,
       icon: Calendar,
       color: "text-green-600"
     },
     {
       title: "QR Codes Generated",
-      value: "3,847",
-      change: "+156",
+      value: sessionsCount.toString(),
+      change: `+${sessionsCount}`,
       icon: QrCode,
       color: "text-purple-600"
     },
     {
       title: "Attendance Rate",
-      value: "94.2%",
+      value: `${attendanceRate.toFixed(1)}%`,
       change: "+2.1%",
       icon: TrendingUp,
       color: "text-emerald-600"
-    }
-  ];
-
-  const recentSessions = [
-    {
-      id: "CS-101",
-      name: "Computer Science Fundamentals",
-      time: "09:00 AM",
-      date: "Today",
-      status: "Active",
-      attended: 45,
-      total: 50
-    },
-    {
-      id: "MATH-201",
-      name: "Advanced Mathematics",
-      time: "11:00 AM",
-      date: "Today",
-      status: "Completed",
-      attended: 38,
-      total: 42
-    },
-    {
-      id: "PHY-151",
-      name: "Physics Laboratory",
-      time: "02:00 PM",
-      date: "Today",
-      status: "Upcoming",
-      attended: 0,
-      total: 35
-    },
-    {
-      id: "ENG-101",
-      name: "English Literature",
-      time: "04:00 PM",
-      date: "Today",
-      status: "Upcoming",
-      attended: 0,
-      total: 28
     }
   ];
 
@@ -220,12 +314,10 @@ const Dashboard = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {[
-              { student: "John Doe", action: "Checked in", class: "CS-101", time: "2 minutes ago", status: "success" },
-              { student: "Jane Smith", action: "Checked in", class: "MATH-201", time: "5 minutes ago", status: "success" },
-              { student: "Mike Johnson", action: "Late check-in", class: "CS-101", time: "8 minutes ago", status: "warning" },
-              { student: "Sarah Wilson", action: "Checked in", class: "PHY-151", time: "12 minutes ago", status: "success" },
-            ].map((activity, index) => (
+            {recentActivity.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
+            ) : (
+              recentActivity.map((activity, index) => (
               <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
                 <div className="flex items-center space-x-3">
                   <div className={`w-2 h-2 rounded-full ${
@@ -240,7 +332,8 @@ const Dashboard = () => {
                 </div>
                 <span className="text-xs text-muted-foreground">{activity.time}</span>
               </div>
-            ))}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
