@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,10 +20,47 @@ const GenerateQR = () => {
     expiryTime: ""
   });
   const [qrCode, setQrCode] = useState<string>("");
+  const [existingSessionId, setExistingSessionId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
   const qrRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
+
+  // Check for existing active session when session ID changes
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      if (!qrData.sessionId || !user) return;
+
+      const { data: existingSessions } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('session_id', qrData.sessionId)
+        .eq('is_active', true)
+        .single();
+
+      if (existingSessions) {
+        setExistingSessionId(existingSessions.id);
+        setQrCode(existingSessions.qr_data);
+        setQrData({
+          sessionName: existingSessions.session_name,
+          sessionId: existingSessions.session_id,
+          duration: existingSessions.duration.toString(),
+          description: existingSessions.description || "",
+          expiryTime: existingSessions.expiry_time ? new Date(existingSessions.expiry_time).toISOString().slice(0, 16) : ""
+        });
+        toast({
+          title: "Active Session Found",
+          description: "Showing existing QR code for this session",
+        });
+      } else {
+        setExistingSessionId(null);
+        setQrCode("");
+      }
+    };
+
+    const timeoutId = setTimeout(checkExistingSession, 500);
+    return () => clearTimeout(timeoutId);
+  }, [qrData.sessionId, user]);
 
   const generateQRCode = async () => {
     if (!qrData.sessionName || !qrData.sessionId || !user) {
@@ -35,16 +72,27 @@ const GenerateQR = () => {
       return;
     }
 
+    if (existingSessionId) {
+      toast({
+        title: "Session Already Exists",
+        description: "This session is still active. Using existing QR code.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsGenerating(true);
     
     try {
+      // Create a fixed timestamp for this session (no regeneration)
+      const sessionCreationTime = Date.now();
+      
       const qrPayload = JSON.stringify({
         type: "ATTENDANCE",
         sessionId: qrData.sessionId,
         sessionName: qrData.sessionName,
         duration: qrData.duration,
-        timestamp: Date.now(),
-        expiryTime: qrData.expiryTime
+        createdAt: sessionCreationTime
       });
 
       const { error } = await supabase.from("sessions").insert({
@@ -62,7 +110,7 @@ const GenerateQR = () => {
       setQrCode(qrPayload);
       toast({
         title: "QR Code Generated",
-        description: "Session saved and QR code is ready to scan",
+        description: "Session created. This QR code will remain the same until session completes.",
       });
     } catch (error: any) {
       toast({
@@ -196,12 +244,17 @@ const GenerateQR = () => {
               onClick={generateQRCode} 
               className="w-full" 
               variant="gradient"
-              disabled={isGenerating}
+              disabled={isGenerating || !!existingSessionId}
             >
               {isGenerating ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   Generating...
+                </>
+              ) : existingSessionId ? (
+                <>
+                  <QrCode className="h-4 w-4 mr-2" />
+                  Active Session (QR Locked)
                 </>
               ) : (
                 <>
@@ -210,6 +263,11 @@ const GenerateQR = () => {
                 </>
               )}
             </Button>
+            {existingSessionId && (
+              <p className="text-xs text-muted-foreground text-center">
+                This session is active. The QR code cannot be changed until the session is completed.
+              </p>
+            )}
           </CardContent>
         </Card>
 
